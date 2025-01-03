@@ -24,22 +24,6 @@ export class AuthService {
     private readonly i18n: I18nService,
   ) {}
 
-  async setTokensCookie(
-    res: Response,
-    tokens: { accessToken: string; refreshToken: string },
-  ) {
-    await Promise.all([
-      this.setTokenCookie(res, {
-        token: tokens.accessToken,
-        name: 'accessToken',
-      }),
-      this.setTokenCookie(res, {
-        token: tokens.refreshToken,
-        name: 'refreshToken',
-      }),
-    ]);
-  }
-
   async signUp(dto: SignUpDto) {
     const user = await this.usersService.create(dto);
     this.logger.log(`Пользователь ${dto.email} зарегистрировался`);
@@ -82,17 +66,5 @@ export class AuthService {
     );
     this.logger.log(`Пользователь ${payload.id} получил новый access-token`);
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
-  }
-
-  private async setTokenCookie(
-    res: Response,
-    data: { token: string; name: string },
-  ) {
-    res.cookie(data.name, data.token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
   }
 }
