@@ -4,12 +4,11 @@ import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 import config from '../../config/config';
 import { AuthModule } from '../auth/auth.module';
 import { LoggerMiddleware } from '@app/common/middlewares/logger.middleware';
-import { PermissionModule } from 'libs/permissions/src';
-import { PermissionGuard } from '@app/common/guards/permission.guard';
 import { TokenModule } from '@app/token';
 import { UsersModule } from '../users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { AugmentationModule } from '../augmentation/augmentation.module';
+import { S3Module } from 'nestjs-s3';
 
 @Module({
   imports: [
@@ -38,6 +37,21 @@ import { AugmentationModule } from '../augmentation/augmentation.module';
       },
       resolvers: [AcceptLanguageResolver],
     }),
+    S3Module.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        config: {
+          credentials: {
+            accessKeyId: configService.get('S3_ACCESS_KEY'),
+            secretAccessKey: configService.get('S3_SECRET_KEY'),
+          },
+          endpoint: configService.get('S3_ENDPOINT'),
+          region: configService.get('S3_REGION'),
+        },
+      }),
+    }),
+
     AuthModule,
     TokenModule,
     UsersModule,
