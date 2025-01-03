@@ -42,7 +42,7 @@ export class AugmentationConsumer extends WorkerHost {
     destinationPath: string,
   ): Promise<void> {
     const files = await fs.readdir(sourcePath);
-    const imageFiles = this.filterImageFiles(files);
+    const imageFiles = await this.filterImageFiles(files);
 
     await Promise.all(
       imageFiles.map((file) =>
@@ -51,14 +51,21 @@ export class AugmentationConsumer extends WorkerHost {
     );
   }
 
-  private filterImageFiles(files: string[]): string[] {
-    return files.filter((file) => this.isImage(file));
+  private async filterImageFiles(files: string[]): Promise<string[]> {
+    return Promise.all(
+      files.map(async (file) => ({
+        file,
+        isImage: await this.isImage(file),
+      })),
+    ).then((results) => results.filter((r) => r.isImage).map((r) => r.file));
   }
 
-  private isImage(filename: string): boolean {
+  private async isImage(filename: string): Promise<boolean> {
     const lowercaseFilename = filename.toLowerCase();
-    return this.SUPPORTED_IMAGE_EXTENSIONS.some((ext) =>
-      lowercaseFilename.endsWith(ext),
+    return Promise.resolve(
+      this.SUPPORTED_IMAGE_EXTENSIONS.some((ext) =>
+        lowercaseFilename.endsWith(ext),
+      ),
     );
   }
 
@@ -68,7 +75,7 @@ export class AugmentationConsumer extends WorkerHost {
     destinationPath: string,
   ): Promise<void> {
     const inputPath = path.join(sourcePath, filename);
-    const augmentationTasks = this.generateAugmentationTasks(
+    const augmentationTasks = await this.generateAugmentationTasks(
       inputPath,
       destinationPath,
       filename,
@@ -77,12 +84,12 @@ export class AugmentationConsumer extends WorkerHost {
     await Promise.all(augmentationTasks);
   }
 
-  private generateAugmentationTasks(
+  private async generateAugmentationTasks(
     inputPath: string,
     destinationPath: string,
     filename: string,
-  ): Promise<void>[] {
-    return Array.from({ length: this.AUGMENTATION_COUNT }, (_, index) =>
+  ) {
+    return Array.from({ length: this.AUGMENTATION_COUNT }, async (_, index) =>
       this.augmentSingleImage(inputPath, destinationPath, filename, index),
     );
   }
@@ -98,7 +105,7 @@ export class AugmentationConsumer extends WorkerHost {
       filename,
       index,
     );
-    const angle = this.generateRandomAngle();
+    const angle = await this.generateRandomAngle();
 
     await this.applyImageTransformations(inputPath, outputPath, angle);
   }
@@ -116,21 +123,27 @@ export class AugmentationConsumer extends WorkerHost {
     outputPath: string,
     angle: number,
   ): Promise<void> {
-    await sharp(inputPath).rotate(angle).sharpen().toFile(outputPath);
+    const image = sharp(inputPath);
+    await image
+      .rotate(await angle)
+      .sharpen()
+      .toFile(outputPath);
   }
 
   private async uploadAugmentedImages(
     augmentedDir: string,
     sessionId: string,
   ): Promise<void> {
-    const zipBuffer = this.createZipArchive(augmentedDir);
+    const zipBuffer = await this.createZipArchive(augmentedDir);
     await this.uploadToS3(zipBuffer, sessionId);
   }
 
-  private createZipArchive(directory: string): Buffer {
+  private async createZipArchive(directory: string): Promise<Buffer> {
     const zip = new AdmZip();
-    zip.addLocalFolder(directory);
-    return zip.toBuffer();
+    return new Promise((resolve) => {
+      zip.addLocalFolder(directory);
+      resolve(zip.toBuffer());
+    });
   }
 
   private async uploadToS3(
@@ -164,7 +177,7 @@ export class AugmentationConsumer extends WorkerHost {
     ]);
   }
 
-  private generateRandomAngle(): number {
-    return Math.floor(Math.random() * 360);
+  private async generateRandomAngle(): Promise<number> {
+    return Promise.resolve(Math.floor(Math.random() * 360));
   }
 }
