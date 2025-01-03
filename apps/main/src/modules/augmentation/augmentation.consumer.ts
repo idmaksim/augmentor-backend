@@ -9,7 +9,13 @@ import { ConfigService } from '@nestjs/config';
 
 @Processor('augmentation')
 export class AugmentationConsumer extends WorkerHost {
-  private readonly SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+  private readonly SUPPORTED_IMAGE_EXTENSIONS = [
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+  ];
+  private readonly AUGMENTATION_COUNT = 10;
 
   constructor(
     @InjectS3() private readonly s3: S3,
@@ -18,103 +24,147 @@ export class AugmentationConsumer extends WorkerHost {
     super();
   }
 
-  async process(job: Job) {
+  async process(job: Job): Promise<void> {
+    const { tempPath, sessionId } = job.data;
+
     try {
-      const { tempPath, sessionId } = job.data;
-      const augmentedDir = await this.prepareAugmentedDirectory(sessionId);
-      await this.processAllFiles(tempPath, augmentedDir);
-      await this.createAndUploadZip(augmentedDir, sessionId);
-      await this.cleanup(tempPath, augmentedDir);
+      const augmentedDir = await this.createAugmentedDirectory(sessionId);
+      await this.augmentImages(tempPath, augmentedDir);
+      await this.uploadAugmentedImages(augmentedDir, sessionId);
+      await this.removeTemporaryDirectories(tempPath, augmentedDir);
     } catch (error) {
-      console.error(error);
+      throw new Error(`Augmentation process failed: ${error.message}`);
     }
   }
 
-  private async prepareAugmentedDirectory(sessionId: string): Promise<string> {
-    const augmentedDir = path.join(process.cwd(), 'augmented', sessionId);
-    await fs.mkdir(augmentedDir, { recursive: true });
-    return augmentedDir;
-  }
-
-  private async processAllFiles(
-    tempPath: string,
-    augmentedDir: string,
+  private async augmentImages(
+    sourcePath: string,
+    destinationPath: string,
   ): Promise<void> {
-    const files = await fs.readdir(tempPath);
-    const imageFiles = files.filter((file) => this.isImageFile(file));
+    const files = await fs.readdir(sourcePath);
+    const imageFiles = this.filterImageFiles(files);
 
     await Promise.all(
       imageFiles.map((file) =>
-        this.processImage(file, tempPath, augmentedDir, 10),
+        this.createAugmentedVersions(file, sourcePath, destinationPath),
       ),
     );
   }
 
-  private isImageFile(filename: string): boolean {
-    return this.SUPPORTED_EXTENSIONS.some((ext) =>
-      filename.toLowerCase().endsWith(ext),
+  private filterImageFiles(files: string[]): string[] {
+    return files.filter((file) => this.isImage(file));
+  }
+
+  private isImage(filename: string): boolean {
+    const lowercaseFilename = filename.toLowerCase();
+    return this.SUPPORTED_IMAGE_EXTENSIONS.some((ext) =>
+      lowercaseFilename.endsWith(ext),
     );
   }
 
-  private async processImage(
+  private async createAugmentedVersions(
     filename: string,
     sourcePath: string,
     destinationPath: string,
-    augmentationCount: number,
   ): Promise<void> {
     const inputPath = path.join(sourcePath, filename);
-    const augmentationTasks = Array.from(
-      { length: augmentationCount },
-      (_, i) =>
-        this.createAugmentedImage(inputPath, destinationPath, filename, i),
+    const augmentationTasks = this.generateAugmentationTasks(
+      inputPath,
+      destinationPath,
+      filename,
     );
 
     await Promise.all(augmentationTasks);
   }
 
-  private async createAugmentedImage(
+  private generateAugmentationTasks(
+    inputPath: string,
+    destinationPath: string,
+    filename: string,
+  ): Promise<void>[] {
+    return Array.from({ length: this.AUGMENTATION_COUNT }, (_, index) =>
+      this.augmentSingleImage(inputPath, destinationPath, filename, index),
+    );
+  }
+
+  private async augmentSingleImage(
     inputPath: string,
     destinationPath: string,
     filename: string,
     index: number,
   ): Promise<void> {
-    const outputPath = path.join(
+    const outputPath = this.generateOutputPath(
       destinationPath,
-      `augmented_${index}_${filename}`,
+      filename,
+      index,
     );
-    const randomAngle = this.generateRandomAngle();
+    const angle = this.generateRandomAngle();
 
-    await sharp(inputPath).rotate(randomAngle).sharpen().toFile(outputPath);
+    await this.applyImageTransformations(inputPath, outputPath, angle);
   }
 
-  private generateRandomAngle(): number {
-    return Math.floor(Math.random() * 360);
+  private generateOutputPath(
+    destinationPath: string,
+    filename: string,
+    index: number,
+  ): string {
+    return path.join(destinationPath, `augmented_${index}_${filename}`);
   }
 
-  private async createAndUploadZip(
+  private async applyImageTransformations(
+    inputPath: string,
+    outputPath: string,
+    angle: number,
+  ): Promise<void> {
+    await sharp(inputPath).rotate(angle).sharpen().toFile(outputPath);
+  }
+
+  private async uploadAugmentedImages(
     augmentedDir: string,
     sessionId: string,
   ): Promise<void> {
-    const zip = new AdmZip();
-    zip.addLocalFolder(augmentedDir);
-    const zipBuffer = zip.toBuffer();
-
-    await this.s3
-      .putObject({
-        Bucket: this.configService.get('S3_BUCKET'),
-        Key: `${sessionId}.zip`,
-        Body: zipBuffer,
-        ContentType: 'application/zip',
-      })
-      .then((res) => {
-        console.log(res);
-      });
+    const zipBuffer = this.createZipArchive(augmentedDir);
+    await this.uploadToS3(zipBuffer, sessionId);
   }
 
-  private async cleanup(tempPath: string, augmentedDir: string): Promise<void> {
+  private createZipArchive(directory: string): Buffer {
+    const zip = new AdmZip();
+    zip.addLocalFolder(directory);
+    return zip.toBuffer();
+  }
+
+  private async uploadToS3(
+    zipBuffer: Buffer,
+    sessionId: string,
+  ): Promise<void> {
+    const bucket = this.configService.get('S3_BUCKET');
+    const key = `${sessionId}.zip`;
+
+    await this.s3.putObject({
+      Bucket: bucket,
+      Key: key,
+      Body: zipBuffer,
+      ContentType: 'application/zip',
+    });
+  }
+
+  private async createAugmentedDirectory(sessionId: string): Promise<string> {
+    const augmentedDir = path.join(process.cwd(), 'augmented', sessionId);
+    await fs.mkdir(augmentedDir, { recursive: true });
+    return augmentedDir;
+  }
+
+  private async removeTemporaryDirectories(
+    tempPath: string,
+    augmentedDir: string,
+  ): Promise<void> {
     await Promise.all([
       fs.rm(tempPath, { recursive: true, force: true }),
       fs.rm(augmentedDir, { recursive: true, force: true }),
     ]);
+  }
+
+  private generateRandomAngle(): number {
+    return Math.floor(Math.random() * 360);
   }
 }
