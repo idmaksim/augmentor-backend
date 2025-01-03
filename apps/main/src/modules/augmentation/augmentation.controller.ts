@@ -7,9 +7,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { Express } from 'express';
+import { AugmentationService } from './augmentation.service';
 
 @Controller('augmentation')
 export class AugmentationController {
+  constructor(private readonly augmentationService: AugmentationService) {}
+
   @Post('upload')
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -24,6 +27,7 @@ export class AugmentationController {
   })
   @UseInterceptors(FileInterceptor('file'))
   async upload(@UploadedFile() file: Express.Multer.File) {
-    console.log(file);
+    const result = await this.augmentationService.processZipFile(file.buffer);
+    return result;
   }
 }
