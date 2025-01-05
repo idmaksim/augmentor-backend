@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { BullModule } from '@nestjs/bullmq';
 import { AugmentationModule } from '../augmentation/augmentation.module';
 import { S3Module } from 'nestjs-s3';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -51,7 +52,7 @@ import { S3Module } from 'nestjs-s3';
         },
       }),
     }),
-
+    ScheduleModule.forRoot(),
     AuthModule,
     TokenModule,
     UsersModule,

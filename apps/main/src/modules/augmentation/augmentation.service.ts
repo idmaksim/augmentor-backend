@@ -59,10 +59,17 @@ export class AugmentationService {
     sessionId: string,
     paths: { tempPath: string },
   ): Promise<void> {
-    await this.queue.add('process-files', {
-      sessionId,
-      tempPath: paths.tempPath,
-    });
+    await this.queue.add(
+      'process-files',
+      {
+        sessionId,
+        tempPath: paths.tempPath,
+      },
+      {
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
   }
 
   private async ensureDirectories(...dirs: string[]): Promise<void> {

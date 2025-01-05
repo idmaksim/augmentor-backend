@@ -6,16 +6,9 @@ import { DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { LoggerInterceptor } from '@app/common/interceptors/logger.interceptor';
 import * as cookieParser from 'cookie-parser';
-import * as fs from 'fs';
 
 async function bootstrap() {
-  const httpsOptions = {
-    key: fs.readFileSync('./cert/key.pem'),
-    cert: fs.readFileSync('./cert/cert.pem'),
-  };
-  const app = await NestFactory.create(AppModule, {
-    httpsOptions,
-  });
+  const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
   app.use(cookieParser());
