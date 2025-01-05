@@ -7,6 +7,7 @@ import * as sharp from 'sharp';
 import * as AdmZip from 'adm-zip';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
+import { AugmentationGateway } from './augmentation.gateway';
 
 @Processor('augmentation')
 export class AugmentationConsumer extends WorkerHost {
@@ -22,22 +23,41 @@ export class AugmentationConsumer extends WorkerHost {
   constructor(
     @InjectS3() private readonly s3: S3,
     private readonly configService: ConfigService,
+    private readonly augmentationGateway: AugmentationGateway,
   ) {
     super();
     this.downloadUrl = `${this.configService.get('S3_ENDPOINT')}/${this.configService.get('S3_BUCKET')}`;
   }
 
   async process(job: Job): Promise<void> {
-    const { tempPath, sessionId, count } = job.data;
+    const { tempPath, sessionId, count, userId } = job.data;
+    this.logger.log(
+      `Начало обработки задания: ${job.id}, sessionId: ${sessionId}`,
+    );
 
     try {
       const augmentedDir = await this.createDirectory('augmented', sessionId);
-      await this.augmentImages(tempPath, augmentedDir, count);
-      await this.handleUpload(augmentedDir, sessionId);
-      await this.cleanup(tempPath, augmentedDir);
+      this.logger.log(`Создана директория для аугментации: ${augmentedDir}`);
 
-      console.log(`${this.downloadUrl}/${sessionId}.zip`);
+      await this.augmentImages(tempPath, augmentedDir, count);
+      this.logger.log(
+        `Аугментация изображений завершена для sessionId: ${sessionId}`,
+      );
+
+      await this.handleUpload(augmentedDir, sessionId);
+      this.logger.log(`Загрузка на S3 завершена для sessionId: ${sessionId}`);
+
+      await this.cleanup(tempPath, augmentedDir);
+      this.logger.log(
+        `Очистка временных директорий завершена для sessionId: ${sessionId}`,
+      );
+
+      await this.augmentationGateway.emitResultToUser(
+        userId,
+        `${this.downloadUrl}/${sessionId}.zip`,
+      );
     } catch (error) {
+      this.logger.error(`Ошибка в процессе аугментации: ${error.message}`);
       throw new Error(`Augmentation process failed: ${error.message}`);
     }
   }
@@ -48,7 +68,8 @@ export class AugmentationConsumer extends WorkerHost {
     count: number,
   ): Promise<void> {
     const files = await fs.readdir(sourcePath);
-    const imageFiles = files.filter(this.isImage);
+    const imageFiles = files.filter(this.isImage.bind(this));
+    this.logger.log(`Найдено ${imageFiles.length} изображений для аугментации`);
 
     await Promise.all(
       imageFiles.map((file) =>
@@ -87,6 +108,7 @@ export class AugmentationConsumer extends WorkerHost {
       `augmented_${index}_${filename}`,
     );
     const angle = this.generateRandomAngle();
+    this.logger.log(`Аугментация изображения: ${filename}, угол: ${angle}`);
 
     await sharp(inputPath).rotate(angle).sharpen().toFile(outputPath);
   }
@@ -106,6 +128,7 @@ export class AugmentationConsumer extends WorkerHost {
   private async createZip(directory: string): Promise<Buffer> {
     const zip = new AdmZip();
     zip.addLocalFolder(directory);
+    this.logger.log(`Создан ZIP архив для директории: ${directory}`);
     return zip.toBuffer();
   }
 
@@ -116,11 +139,13 @@ export class AugmentationConsumer extends WorkerHost {
       Body: buffer,
       ContentType: 'application/zip',
     });
+    this.logger.log(`Файл загружен на S3: ${key}`);
   }
 
   private async createDirectory(type: string, id: string): Promise<string> {
     const dir = path.join(process.cwd(), type, id);
     await fs.mkdir(dir, { recursive: true });
+    this.logger.log(`Создана директория: ${dir}`);
     return dir;
   }
 
@@ -128,5 +153,6 @@ export class AugmentationConsumer extends WorkerHost {
     await Promise.all(
       dirs.map((dir) => fs.rm(dir, { recursive: true, force: true })),
     );
+    this.logger.log(`Удалены директории: ${dirs.join(', ')}`);
   }
 }

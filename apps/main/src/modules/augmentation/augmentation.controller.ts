@@ -4,14 +4,18 @@ import {
   UploadedFile,
   UseInterceptors,
   Body,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { Express } from 'express';
 import { AugmentationService } from './augmentation.service';
 import { AugmentationDto } from './dto/augmentation.dto';
+import { ActiveGuard, DecodeUser, JwtAuthGuard, User } from '@app/common';
 
 @Controller('augmentation')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, ActiveGuard)
 export class AugmentationController {
   constructor(private readonly augmentationService: AugmentationService) {}
 
@@ -36,7 +40,12 @@ export class AugmentationController {
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: AugmentationDto,
+    @DecodeUser() user: User,
   ) {
-    return this.augmentationService.processZipFile(file.buffer, body.count);
+    return this.augmentationService.processZipFile(
+      file.buffer,
+      body.count,
+      user.id,
+    );
   }
 }
