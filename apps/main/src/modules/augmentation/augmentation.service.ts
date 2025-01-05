@@ -15,16 +15,14 @@ export class AugmentationService {
     private readonly queue: Queue,
   ) {}
 
-  async processZipFile(zipBuffer: Buffer): Promise<string> {
+  async processZipFile(zipBuffer: Buffer, count: number) {
     try {
       const sessionId = this.generateSessionId();
       const paths = this.createPaths(sessionId);
 
       await this.ensureDirectories(paths.tempPath);
       await this.extractZipFile(zipBuffer, paths.tempPath);
-      await this.queueProcessingJob(sessionId, paths);
-
-      return sessionId;
+      await this.queueProcessingJob(sessionId, paths, count);
     } catch {
       throw new BadRequestException('Only ZIP files supports');
     }
@@ -58,12 +56,14 @@ export class AugmentationService {
   private async queueProcessingJob(
     sessionId: string,
     paths: { tempPath: string },
+    count: number,
   ): Promise<void> {
     await this.queue.add(
       'process-files',
       {
         sessionId,
         tempPath: paths.tempPath,
+        count,
       },
       {
         removeOnComplete: true,
