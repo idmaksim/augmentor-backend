@@ -43,6 +43,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         config: {
+          forcePathStyle: true,
           credentials: {
             accessKeyId: configService.get('S3_ACCESS_KEY'),
             secretAccessKey: configService.get('S3_SECRET_KEY'),

@@ -18,22 +18,78 @@ services:
       timeout: 2s
       retries: 5
 
+  redis:
+    image: redis:latest
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 2s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    command: server --console-address ":9001" /data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 3s
+      timeout: 2s
+      retries: 5
+
+  mc:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add myminio http://minio:9000 minio minio123;
+      /usr/bin/mc mb myminio/default;
+      /usr/bin/mc anonymous set download myminio/default;
+      exit 0;
+      "
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    command: >
-      sh -c "npx prisma migrate reset --force && npx concurrently \"nest start main\" \"nest start admin\""
     ports:
-      - '3000:3000'
-      - '3001:3001'
+      - '8080:8080'
+      - '8081:8081'
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - ACCESS_SECRET=access_secret
       - REFRESH_SECRET=refresh_secret
+      - REDIS_URL=redis://redis:6379
+      - S3_ACCESS_KEY=minio
+      - S3_SECRET_KEY=minio123
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=us-east-1
+      - S3_BUCKET=default
+      - PORT=8080
+      - ADMIN_PORT=8081
+    command: >
+      sh -c "npx prisma migrate reset --force && npm run build && npm run start:prod"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
 volumes:
   db_data:
+  redis_data:
+  minio_data:
