@@ -80,13 +80,13 @@ To run this project, follow these steps:
 1. **Clone Your Repository**: Clone your repository to your local machine.
 
    ```bash
-   git clone <your-repository-url>
+   git clone https://github.com/idmaksim/augmentor-backend.git
    ```
 
 2. **Install Dependencies**: Navigate to the project directory and install the necessary dependencies.
 
    ```bash
-   cd <your-repository-name>
+   cd https://github.com/idmaksim/augmentor-backend.git
    npm install
    ```
 
