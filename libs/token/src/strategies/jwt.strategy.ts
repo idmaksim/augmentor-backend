@@ -19,6 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       return await this.usersService.findOneById({
         id: payload.id,
         withPassword: false,
+        catchError: true,
       });
     } catch (error) {
       throw new UnauthorizedException();

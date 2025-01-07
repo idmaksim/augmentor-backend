@@ -6,4 +6,5 @@ export interface FindOneByEmailOptions {
 export interface FindOneByIdOptions {
   id: string;
   withPassword: boolean;
+  catchError: boolean;
 }

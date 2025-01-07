@@ -43,7 +43,7 @@ export class UsersService {
 
   async findOneById(options: FindOneByIdOptions) {
     const user = await this.usersRepository.findOneById(options.id);
-    if (!user) {
+    if (!user && options.catchError) {
       throw new NotFoundException(this.i18n.t('errors.user.notFound'));
     }
     return options.withPassword ? user : this.deletePassword(user);
