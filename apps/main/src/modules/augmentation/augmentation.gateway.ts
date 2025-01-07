@@ -47,7 +47,7 @@ export class AugmentationGateway
   }
 
   private extractToken(client: Socket): string | undefined {
-    return client.handshake.headers.authorization?.split(' ')[1];
+    return client.handshake.auth.authorization;
   }
 
   private emitError(client: Socket, message: string) {
