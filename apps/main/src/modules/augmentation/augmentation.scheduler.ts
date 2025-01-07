@@ -12,7 +12,7 @@ export class AugmentationScheduler {
     private readonly configService: ConfigService,
   ) {}
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async clearOldArchives() {
     this.logger.debug('Начало очистки S3 хранилища');
 
