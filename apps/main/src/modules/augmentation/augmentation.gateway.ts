@@ -37,7 +37,7 @@ export class AugmentationGateway
         return this.usersService.findOneById({
           id: payload.id,
           withPassword: false,
-          catchError: true,
+          catchError: false,
         });
       } catch (error) {
         this.logger.error(`Ошибка проверки токена: ${error}`);
